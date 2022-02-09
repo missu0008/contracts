@@ -305,10 +305,13 @@ contract NominationVote is System {
         for(uint i = 0 ; i < length ; i++){
             if(voter[msg.sender][currentValidatorSet[i].consensusAddress].votes > 0){
                 uint256 reTicket = bscValidatorSet.getReTicket(currentValidatorSet[i].consensusAddress);
+                //当前验证人的投票奖励
                 uint256 reward = uint256(voter[msg.sender][currentValidatorSet[i].consensusAddress].votes).mul(reTicket).sub(voter[msg.sender][currentValidatorSet[i].consensusAddress].debt);
+                //记录上一次领取收益之和
+                uint256 lastReward = amount;
                 amount = amount.add(reward);
                 if( amount >= awardGst){
-                    reward = amount.sub(awardGst);
+                    reward = awardGst.sub(lastReward);
                     //更新债务
                     voter[msg.sender][currentValidatorSet[i].consensusAddress].debt = voter[msg.sender][currentValidatorSet[i].consensusAddress].debt.add(reward);
                     break;
