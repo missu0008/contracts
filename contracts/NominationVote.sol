@@ -325,11 +325,6 @@ contract NominationVote is System {
 
     }
 
-    /*********************** Param update ********************************/
-    function updateParam(string calldata key, bytes calldata value)  external onlyInit{
-        
-    }
-
     //判断精度是否为18的整数
     function checkAmount(uint256 amount) internal pure{
         require(amount % TOKEN_PRECISION == 0 , "must be an integer");

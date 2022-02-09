@@ -70,7 +70,7 @@ contract BSCValidatorSet is  System  {
     currentValidatorSet.push(validator);
     currentValidatorSetMap[GENESIS_NODE] = 1;
     //初始化节点数量
-    INITIAL_VALIDATOR = 1;
+    INITIAL_VALIDATOR = 3;
     alreadyInit = true;
   }
 
@@ -190,32 +190,89 @@ contract BSCValidatorSet is  System  {
     }
   }
 
+  /*********************** For slash **************************/
+  function misdemeanor(address validator)external onlySlash {
+    uint256 index = currentValidatorSetMap[validator];
+    if (index <= 0) {
+      return;
+    }
+    // the actually index
+    index = index - 1;
+    uint256 income = currentValidatorSet[index].incoming;
+    currentValidatorSet[index].incoming = 0;
+    uint256 rest = currentValidatorSet.length - 1;
+    //emit validatorMisdemeanor(validator,income);
+    if (rest==0) {
+      // should not happen, but still protect
+      return;
+    }
+    uint256 averageDistribute = income/rest;
+    if (averageDistribute!=0) {
+      for (uint i=0;i<index;i++) {
+        currentValidatorSet[i].incoming = currentValidatorSet[i].incoming + averageDistribute;
+      }
+      uint n = currentValidatorSet.length;
+      for (uint i=index+1;i<n;i++) {
+        currentValidatorSet[i].incoming = currentValidatorSet[i].incoming + averageDistribute;
+      }
+    }
+    // averageDistribute*rest may less than income, but it is ok, the dust income will go to system reward eventually.
+  }
+
+  function felony(address validator)external onlySlash {
+    uint256 index = currentValidatorSetMap[validator];
+    if (index <= 0) {
+      return;
+    }
+    // the actually index
+    index = index - 1;
+    uint256 income = currentValidatorSet[index].incoming;
+    uint256 rest = currentValidatorSet.length - 1;
+    if (rest==0) {
+      // will not remove the validator if it is the only one validator.
+      currentValidatorSet[index].incoming = 0;
+      return;
+    }
+    //emit validatorFelony(validator,income);
+    delete currentValidatorSetMap[validator];
+    // It is ok that the validatorSet is not in order.
+    if (index != currentValidatorSet.length-1) {
+      currentValidatorSet[index] = currentValidatorSet[currentValidatorSet.length-1];
+      currentValidatorSetMap[currentValidatorSet[index].consensusAddress] = index + 1;
+    }
+    currentValidatorSet.pop();
+    uint256 averageDistribute = income/rest;
+    if (averageDistribute!=0) {
+      uint n = currentValidatorSet.length;
+      for (uint i=0;i<n;i++) {
+        currentValidatorSet[i].incoming = currentValidatorSet[i].incoming + averageDistribute;
+      }
+    }
+    // averageDistribute*rest may less than income, but it is ok, the dust income will go to system reward eventually.
+  }
+
   function getValidators()external view returns(address[] memory) {
-    // uint n = currentValidatorSet.length;
-    // uint valid = 0;
-    // for (uint i = 0;i<n;i++) {
-    //   if (!currentValidatorSet[i].jailed) {
-    //     valid ++;
-    //   }
-    // }
-
-
+    uint n = currentValidatorSet.length;
+    uint valid = 0;
+    for (uint i = 0;i<n;i++) {
+      if (!currentValidatorSet[i].jailed) {
+        valid ++;
+      }
+    }
     //
-    uint valid = uint(INITIAL_VALIDATOR);
     address[] memory consensusAddrs = new address[](valid);
     //正常可以用的
-    // valid = 0;
-    // for (uint i = 0;i<n;i++) {
-    //   if (!currentValidatorSet[i].jailed) {
-    //     consensusAddrs[valid] = currentValidatorSet[i].consensusAddress;
-    //     valid ++;
-    //   }
-    //   if( valid >= uint256(INITIAL_VALIDATOR)){
-    //     break;
-    //   }
-    // }
-    address test = 0xf9056de9c0c6e8fC3097c3612110641190e0C37b;
-    consensusAddrs[0] = test;
+    valid = 0;
+    //uint n = currentValidatorSet.length;
+    for (uint i = 0;i<n;i++) {
+      if (!currentValidatorSet[i].jailed) {
+        consensusAddrs[valid] = currentValidatorSet[i].consensusAddress;
+        valid ++;
+      }
+      if( valid >= uint256(INITIAL_VALIDATOR)){
+        break;
+      }
+    }
     return consensusAddrs;
   }
 
@@ -267,26 +324,6 @@ contract BSCValidatorSet is  System  {
     }
     return currentValidatorSet[index-1].incoming;
   }
-
-  
-  // /*********************** Param update ********************************/
-  // function updateParam(string calldata key, bytes calldata value) override external onlyInit onlyGov{
-  //   if (Memory.compareStrings(key, "expireTimeSecondGap")) {
-  //     require(value.length == 32, "length of expireTimeSecondGap mismatch");
-  //     uint256 newExpireTimeSecondGap = BytesToTypes.bytesToUint256(32, value);
-  //     require(newExpireTimeSecondGap >=100 && newExpireTimeSecondGap <= 1e5, "the expireTimeSecondGap is out of range");
-  //     expireTimeSecondGap = newExpireTimeSecondGap;
-  //   } else if (Memory.compareStrings(key, "burnRatio")) {
-  //     require(value.length == 32, "length of burnRatio mismatch");
-  //     uint256 newBurnRatio = BytesToTypes.bytesToUint256(32, value);
-  //     require(newBurnRatio <= BURN_RATIO_SCALE, "the burnRatio must be no greater than 10000");
-  //     burnRatio = newBurnRatio;
-  //     burnRatioInitialized = true;
-  //   } else {
-  //     require(false, "unknown param");
-  //   }
-  //   emit paramChange(key, value);
-  // }
 
   /*********************** Internal Functions **************************/
 

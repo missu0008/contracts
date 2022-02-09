@@ -10,6 +10,8 @@ contract System {
 
   address public constant NOMINATION_VOTE_ADDR = 0x0000000000000000000000000000000000003000;
 
+  address public constant SLASH_CONTRACT_ADDR = 0x0000000000000000000000000000000000001001;
+
   //INIT_VALIDATORSET_BYTES加在这
   bytes public constant INIT_VALIDATORSET_BYTES = hex"f84580f842f84094f9056de9c0c6e8fC3097c3612110641190e0C37b94f9056de9c0c6e8fC3097c3612110641190e0C37b94f9056de9c0c6e8fC3097c3612110641190e0C37b64";
 
@@ -38,6 +40,11 @@ contract System {
   
   modifier onlyValidatorContract() {
     require(msg.sender == VALIDATOR_CONTRACT_ADDR, "the message sender must be validatorSet contract");
+    _;
+  }
+
+  modifier onlySlash() {
+    require(msg.sender == SLASH_CONTRACT_ADDR, "the message sender must be slash contract");
     _;
   }
 
