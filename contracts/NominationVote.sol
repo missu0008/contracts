@@ -173,7 +173,8 @@ contract NominationVote is System {
             voted = getUserVoted(msg.sender);
             uint256 remain_vote = userGst[msg.sender].lockAmount.sub(voted);
             require(remain_vote.sub(uint256(ballot[i]).mul(TOKEN_PRECISION)) >= 0 ,"insufficient votes");
-
+            //已质押代币增加
+            userGst[[msg.sender].usedLockAmount = userGst[[msg.sender].usedLockAmount.add(uint256(ballot[i]).mul(TOKEN_PRECISION));
             //获取每票奖励
             uint256 reTicket = bscValidatorSet.getReTicket(verificationNode[i]);
             //更新债务
@@ -214,6 +215,9 @@ contract NominationVote is System {
             }else{
                 voter[msg.sender][verificationNode[i]].debt = 0;
             }
+
+            //已质押代币减少
+            userGst[[msg.sender].usedLockAmount = userGst[[msg.sender].usedLockAmount.sub(uint256(ballot[i]).mul(TOKEN_PRECISION));
 
             //更新验证人表中的票数
             voter[msg.sender][verificationNode[i]].votes -= ballot[i];
