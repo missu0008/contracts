@@ -8,6 +8,7 @@ import "./lib/SafeMath.sol";
 import "./lib/RLPDecode.sol";
 import "./lib/CmnPkg.sol";
 import "./BSCValidatorSet.sol";
+//import "./Owner.sol";
 
 //提名投票设计思路
 
@@ -63,9 +64,9 @@ contract NominationVote is System {
     //代币精度 ， 1代币 = 1票，禁止分割,bsc链上精度为18
     uint256 public constant TOKEN_PRECISION = 1000000000000000000;
     //成为验证候选人抵押代币数量,测试至少为10个，remix账号上面只有100个。。。
-    uint256 public constant TOKEN_CANDIDATE = 10000000000000000000;
-    //解冻周期,测试时间1800s
-    uint public THAW_CYCLE = 1800; // * 24 * 3;
+    uint256 public constant TOKEN_CANDIDATE = 100000000000000000000000;
+    //解冻周期,测试时间1800s,正式网15天
+    uint public constant THAW_CYCLE = 3600 * 24 *15; // * 24 * 3;
     //成为验证人抵押的代币数量
     mapping(address => uint256) public userToken;
     //取消成为验证人冻结的信息
@@ -81,19 +82,38 @@ contract NominationVote is System {
     mapping(address => mapping(address => VoterInfo)) public voter;
     //投票人质押信息
     mapping(address => VoterIncome) public userGst;
+    //当前节点被踢后冻结的质押代币
+    mapping(address => uint256) public slashValidator;
+    //因为出块节点异常被踢出去冻结的资产总数
+    uint256 public total_slash;
 
     BSCValidatorSet bscValidatorSet;
     //测试
     address public constant TEST = 0xd9145CCE52D386f254917e481eB44e9943F39138;
 
-
     /*********************** init 初始化函数主要是获取验证人集合，和BSCValidatorSet中保持一致**************************/
     function init() external onlyNotInit{
         Validator memory validator;
-        validator.consensusAddress = GENESIS_NODE;
+        validator.consensusAddress = GENESIS_NODE1;
         currentValidatorSet.push(validator);
-        currentValidatorSetMap[GENESIS_NODE] = 1;
+
+        validator.consensusAddress = GENESIS_NODE2;
+        currentValidatorSet.push(validator);
+
+        validator.consensusAddress = GENESIS_NODE3;
+        currentValidatorSet.push(validator);
+
+        validator.consensusAddress = GENESIS_NODE4;
+        currentValidatorSet.push(validator);
+
+        currentValidatorSetMap[GENESIS_NODE1] = 1;
+        currentValidatorSetMap[GENESIS_NODE2] = 2;
+        currentValidatorSetMap[GENESIS_NODE3] = 3;
+        currentValidatorSetMap[GENESIS_NODE4] = 4;
         bscValidatorSet = BSCValidatorSet(VALIDATOR_CONTRACT_ADDR);
+        //admin[GENESIS_ADMIN] = true;
+        //转换权限
+        //transferOwnership(GENESIS_ADMIN);
         alreadyInit = true;
     }
 
@@ -209,6 +229,8 @@ contract NominationVote is System {
             bscValidatorSet.withdrawGst(msg.sender , reward );
             //累计收益增加
             userGst[msg.sender].totalAmount = userGst[msg.sender].totalAmount.add(reward);
+            //更新验证人表中的票数
+            voter[msg.sender][verificationNode[i]].votes -= ballot[i];
             //如果有余票，当做新用户计算债务
             if(voter[msg.sender][verificationNode[i]].votes > 0){
                 voter[msg.sender][verificationNode[i]].debt = reTicket.mul(uint256(voter[msg.sender][verificationNode[i]].votes));
@@ -219,8 +241,6 @@ contract NominationVote is System {
             //已质押代币减少
             userGst[msg.sender].usedLockAmount = userGst[msg.sender].usedLockAmount.sub(uint256(ballot[i]).mul(TOKEN_PRECISION));
 
-            //更新验证人表中的票数
-            voter[msg.sender][verificationNode[i]].votes -= ballot[i];
             //更新验证人合约总票数
             bscValidatorSet.updateVoter(ballot[i], verificationNode[i], false);
         }
@@ -271,9 +291,13 @@ contract NominationVote is System {
             }
         }
         require(flag, "not a candidate");
+        //require(userToken[msg.sender] > 0 , "the initial validator cannot be cancelled");
         bscValidatorSet.cancleCandidates(msg.sender);
-        userInfo[msg.sender].amount = userToken[msg.sender];
-        userInfo[msg.sender].startTime = block.timestamp;
+        //初始验证人是没有质押的
+        if( userToken[msg.sender] > 0){
+            userInfo[msg.sender].amount = userToken[msg.sender];
+            userInfo[msg.sender].startTime = block.timestamp;
+        }
     }
 
     function receiveValidateGST()external onlyInit{
@@ -332,11 +356,49 @@ contract NominationVote is System {
 
     }
 
+    /*********************** For BSCValidatorSet **************************/
+    //取消当前验证人资格
+    function felonyValidator(address validator) external onlyInit onlyValidatorContract{
+        //遍历验证人表
+        uint256 n = currentValidatorSet.length;
+        for(uint i = 0; i < n ; i++){
+            if( currentValidatorSet[i].consensusAddress == validator ){
+                currentValidatorSet[i].jailed = true;
+                //判断当前验证节点是否取消提名，取消提名期间出块异常不让提取质押的代币
+                if(userInfo[validator].startTime > 0){
+                    delete userInfo[validator];
+                }
+
+                slashValidator[validator]= slashValidator[validator].add(userToken[validator]);
+                total_slash = total_slash.add(userToken[validator]);
+                break;
+            }
+        }
+    }
+
+    /*********************** For admin **************************/
+    function withdrawSlash(address payable validator , uint256 amount) external onlyInit {
+        //调用的库，不用做判断处理，自动处理了异常值
+        slashValidator[validator] = slashValidator[validator].sub(amount);
+        total_slash = total_slash.sub(amount);
+        validator.transfer(amount);
+    }
+
+    function updateValidatorsNumber(int8 validatorsNumber) external onlyInit {
+        bscValidatorSet.updateValidatorsNumber(validatorsNumber);
+    }
+
+    //减少有问题验证节点的漏块数
+    function cleanValidator() external onlyInit {
+        bscValidatorSet.cleanValidator();
+    }
+
+
     //判断精度是否为18的整数
     function checkAmount(uint256 amount) internal pure{
         require(amount % TOKEN_PRECISION == 0 , "must be an integer");
     }
-
+   
     //获取当前用户已投票的总票数
     function getUserVoted(address user) internal view returns(uint256){
         //判断用户是否已投过票
