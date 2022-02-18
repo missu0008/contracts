@@ -7,6 +7,8 @@ import "./lib/Memory.sol";
 import "./lib/SafeMath.sol";
 import "./lib/RLPDecode.sol";
 import "./lib/CmnPkg.sol";
+import "./NominationVote.sol";
+import "./SlashIndicator.sol";
 
 
 contract BSCValidatorSet is  System  {
@@ -57,6 +59,9 @@ contract BSCValidatorSet is  System  {
     _;
   }
 
+  NominationVote nominationVote;
+  SlashIndicator slashIndicator;
+
   /*********************** events **************************/
   event deprecatedDeposit(address indexed validator, uint256 amount);
   event validatorDeposit(address indexed validator, uint256 amount);
@@ -64,18 +69,44 @@ contract BSCValidatorSet is  System  {
   /*********************** init **************************/
   function init() external onlyNotInit{
     Validator memory validator;
-    validator.consensusAddress = GENESIS_NODE;
+    validator.consensusAddress = GENESIS_NODE1;
     //创世节点默认分红10%
     validator.ratio = 10;
     currentValidatorSet.push(validator);
-    currentValidatorSetMap[GENESIS_NODE] = 1;
+
+    validator.consensusAddress = GENESIS_NODE2;
+    //创世节点默认分红10%
+    validator.ratio = 10;
+    currentValidatorSet.push(validator);
+
+    validator.consensusAddress = GENESIS_NODE3;
+    //创世节点默认分红10%
+    validator.ratio = 10;
+    currentValidatorSet.push(validator);
+
+    validator.consensusAddress = GENESIS_NODE4;
+    //创世节点默认分红10%
+    validator.ratio = 10;
+    currentValidatorSet.push(validator);
+
+    currentValidatorSetMap[GENESIS_NODE1] = 1;
+    currentValidatorSetMap[GENESIS_NODE2] = 2;
+    currentValidatorSetMap[GENESIS_NODE3] = 3;
+    currentValidatorSetMap[GENESIS_NODE4] = 4;
     //初始化节点数量
-    INITIAL_VALIDATOR = 3;
+    INITIAL_VALIDATOR = 4;
+    nominationVote = NominationVote(NOMINATION_VOTE_ADDR);
+    slashIndicator = SlashIndicator(SLASH_CONTRACT_ADDR);
     alreadyInit = true;
   }
 
   /**********************以下为新增内容，只能投票合约更新 **********************************/
-
+  //更新验证人数量
+  function updateValidatorsNumber(int8 validatorsNumber) external onlyInit onlyNominationVoteContract{
+    require(uint256(validatorsNumber) <= MAX_NUM_OF_VALIDATORS,"exceeded maximum number of validators");
+    require(validatorsNumber >= 3 , "less than 3 validators");
+    INITIAL_VALIDATOR = validatorsNumber;
+  }
   //更新票数 status为true表示增加，false减少
   function updateVoter(uint64 ballot,address valAddr , bool status) external onlyInit onlyNominationVoteContract{
     uint256 index = currentValidatorSetMap[valAddr];
@@ -162,7 +193,7 @@ contract BSCValidatorSet is  System  {
 
 
   /*********************** 底层出块调用此接口 **************************/
-  function deposit(address valAddr) external payable onlyCoinbase onlyInit noEmptyDeposit{
+  function deposit(address valAddr,int transactions) external payable onlyCoinbase onlyInit noEmptyDeposit{
     uint256 value = msg.value;
     uint256 index = currentValidatorSetMap[valAddr];
 
@@ -178,7 +209,7 @@ contract BSCValidatorSet is  System  {
         validator.incoming = validator.incoming.add(value);
         validator.totalInComing = validator.totalInComing.add(value);
         //测试写死
-        validator.totaltransactions += 3;
+        validator.totaltransactions += uint64(transactions);
         validator.blocks++;
         //更新每票奖励
         calculatePreTicket(validator,award);
@@ -206,14 +237,39 @@ contract BSCValidatorSet is  System  {
       // should not happen, but still protect
       return;
     }
+    //获取正在出块的验证人数量
+    rest = 0;
+    for(uint i = 0 ; i < currentValidatorSet.length ; i++){
+      if( !currentValidatorSet[i].jailed ){
+        rest++;
+      }
+    }
+    if (rest==0) {
+      // should not happen, but still protect
+      return;
+    }
     uint256 averageDistribute = income/rest;
+    //验证人数量,奖励不能分给候选人
+    int8 amount = 0;
     if (averageDistribute!=0) {
       for (uint i=0;i<index;i++) {
-        currentValidatorSet[i].incoming = currentValidatorSet[i].incoming + averageDistribute;
+        if( amount >= INITIAL_VALIDATOR){
+          break;
+        }
+        if( !currentValidatorSet[i].jailed ){
+          currentValidatorSet[i].incoming = currentValidatorSet[i].incoming + averageDistribute;
+          amount++;
+        }
       }
       uint n = currentValidatorSet.length;
       for (uint i=index+1;i<n;i++) {
-        currentValidatorSet[i].incoming = currentValidatorSet[i].incoming + averageDistribute;
+        if( amount >= INITIAL_VALIDATOR){
+          break;
+        }
+        if( !currentValidatorSet[i].jailed ){
+          currentValidatorSet[i].incoming = currentValidatorSet[i].incoming + averageDistribute;
+          amount++;
+        }
       }
     }
     // averageDistribute*rest may less than income, but it is ok, the dust income will go to system reward eventually.
@@ -233,22 +289,52 @@ contract BSCValidatorSet is  System  {
       currentValidatorSet[index].incoming = 0;
       return;
     }
-    //emit validatorFelony(validator,income);
-    delete currentValidatorSetMap[validator];
-    // It is ok that the validatorSet is not in order.
-    if (index != currentValidatorSet.length-1) {
-      currentValidatorSet[index] = currentValidatorSet[currentValidatorSet.length-1];
-      currentValidatorSetMap[currentValidatorSet[index].consensusAddress] = index + 1;
+    //获取正在出块的验证人数量
+    rest = 0;
+    for(uint i = 0 ; i < currentValidatorSet.length ; i++){
+      if( !currentValidatorSet[i].jailed ){
+        rest++;
+      }
     }
-    currentValidatorSet.pop();
+    if (rest==0) {
+      // should not happen, but still protect
+      return;
+    }
+    //emit validatorFelony(validator,income);
+    //不用删除，留在缓存表中
+    //delete currentValidatorSetMap[validator];
+    // It is ok that the validatorSet is not in order.
+    // if (index != currentValidatorSet.length-1) {
+    //   currentValidatorSet[index] = currentValidatorSet[currentValidatorSet.length-1];
+    //   currentValidatorSetMap[currentValidatorSet[index].consensusAddress] = index + 1;
+    // }
+    //currentValidatorSet.pop();
+    //收入清0
+    currentValidatorSet[index].incoming = 0;
+    currentValidatorSet[index].jailed = true;
+    //投票合约把当前验证人修改
+    nominationVote.felonyValidator(validator);
+
     uint256 averageDistribute = income/rest;
+    //验证人数量,奖励不能分给候选人
+    int8 amount = 0;
     if (averageDistribute!=0) {
       uint n = currentValidatorSet.length;
       for (uint i=0;i<n;i++) {
-        currentValidatorSet[i].incoming = currentValidatorSet[i].incoming + averageDistribute;
+        if( amount >= INITIAL_VALIDATOR){
+          break;
+        }
+        if( !currentValidatorSet[i].jailed ){
+          currentValidatorSet[i].incoming = currentValidatorSet[i].incoming + averageDistribute;
+          amount++;
+        }
       }
     }
     // averageDistribute*rest may less than income, but it is ok, the dust income will go to system reward eventually.
+  }
+
+  function cleanValidator() external onlyInit onlyNominationVoteContract{
+    slashIndicator.clean();
   }
 
   function getValidators()external view returns(address[] memory) {
@@ -260,6 +346,9 @@ contract BSCValidatorSet is  System  {
       }
     }
     //
+    if( valid >= uint256(INITIAL_VALIDATOR)){
+      valid = uint256(INITIAL_VALIDATOR);
+    }
     address[] memory consensusAddrs = new address[](valid);
     //正常可以用的
     valid = 0;
