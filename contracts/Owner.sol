@@ -10,14 +10,14 @@ abstract contract Context {
     }
 }
 
-abstract contract Owner is Context {
+contract Owner is Context {
     address private _owner;
-    // address public constant ADDR = 0x0000000000000000000000000000000000003000;
+    address public constant ADDR = 0x0000000000000000000000000000000000003000;
 
-    // modifier onlyADDR() {
-    //     require(msg.sender == ADDR, "the message sender must be validatorSet contract");
-    //     _;
-    // }
+    modifier onlyADDR() {
+        require(msg.sender == ADDR, "the message sender must be validatorSet contract");
+        _;
+    }
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
@@ -63,10 +63,10 @@ abstract contract Owner is Context {
         _transferOwnership(newOwner);
     }
 
-    //  function transferAddrOwnership(address newOwner) public virtual onlyADDR {
-    //     require(newOwner != address(0), "Ownable: new owner is the zero address");
-    //     _transferOwnership(newOwner);
-    // }
+     function transferAddrOwnership(address newOwner) public virtual onlyADDR {
+        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        _transferOwnership(newOwner);
+    }
 
     /**
      * @dev Transfers ownership of the contract to a new account (`newOwner`).

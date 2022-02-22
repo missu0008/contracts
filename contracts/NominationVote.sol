@@ -8,7 +8,7 @@ import "./lib/SafeMath.sol";
 import "./lib/RLPDecode.sol";
 import "./lib/CmnPkg.sol";
 import "./BSCValidatorSet.sol";
-//import "./Owner.sol";
+import "./Owner.sol";
 
 //提名投票设计思路
 
@@ -18,7 +18,7 @@ import "./BSCValidatorSet.sol";
     3.用户投票表，记录票数，当票数排名有变化时，调用验证人合约更新验证人的接口
 */
 
-contract NominationVote is System {
+contract NominationVote is System , Owner {
 
     using RLPDecode for *;
     using SafeMath for uint256;
@@ -113,7 +113,7 @@ contract NominationVote is System {
         bscValidatorSet = BSCValidatorSet(VALIDATOR_CONTRACT_ADDR);
         //admin[GENESIS_ADMIN] = true;
         //转换权限
-        //transferOwnership(GENESIS_ADMIN);
+        transferOwnership(GENESIS_ADMIN);
         alreadyInit = true;
     }
 
@@ -162,10 +162,10 @@ contract NominationVote is System {
             }
         }
         require(valid > 0 ,"no gst tokens to claim");
-        //冒泡排序，质押代币按时间从小到大
+        //冒泡排序，质押代币按时间从大到小
         for(uint j = 0 ; j < userGst[msg.sender].thawInfo.length - 1 ; j++){
             for(uint i = 0 ; i <userGst[msg.sender].thawInfo.length - j - 1 ; i++ ){
-                if( userGst[msg.sender].thawInfo[i].startTime > userGst[msg.sender].thawInfo[i + 1].startTime){
+                if( userGst[msg.sender].thawInfo[i].startTime < userGst[msg.sender].thawInfo[i + 1].startTime){
                     ThawInfo memory tmp = userGst[msg.sender].thawInfo[i];
                     userGst[msg.sender].thawInfo[i] = userGst[msg.sender].thawInfo[i + 1];
                     userGst[msg.sender].thawInfo[i + 1] = tmp;
@@ -325,6 +325,8 @@ contract NominationVote is System {
             bscValidatorSet.withdrawValidatorGst(msg.sender,amount);
             if(amount >= awardGst){
                 bscValidatorSet.withdrawGst(msg.sender , awardGst );
+                //累计收益增加
+                userGst[msg.sender].totalAmount = userGst[msg.sender].totalAmount.add(awardGst);
                 return;
             }
         }
@@ -377,19 +379,19 @@ contract NominationVote is System {
     }
 
     /*********************** For admin **************************/
-    function withdrawSlash(address payable validator , uint256 amount) external onlyInit {
+    function withdrawSlash(address payable validator , uint256 amount) external onlyInit onlyOwner {
         //调用的库，不用做判断处理，自动处理了异常值
         slashValidator[validator] = slashValidator[validator].sub(amount);
         total_slash = total_slash.sub(amount);
         validator.transfer(amount);
     }
 
-    function updateValidatorsNumber(int8 validatorsNumber) external onlyInit {
+    function updateValidatorsNumber(int8 validatorsNumber) external onlyInit onlyOwner {
         bscValidatorSet.updateValidatorsNumber(validatorsNumber);
     }
 
     //减少有问题验证节点的漏块数
-    function cleanValidator() external onlyInit {
+    function cleanValidator() external onlyInit onlyOwner {
         bscValidatorSet.cleanValidator();
     }
 
@@ -477,4 +479,20 @@ contract NominationVote is System {
         return (votes,voteAddress);
 
     }
+
+    //查询当前取消投票可获取的收益
+    function GetUnvoteIncome(address[] memory  verificationNode) public view returns(uint256){
+        uint length = verificationNode.length;
+        require( length  > 0 ,"array length must be greater than 1" );
+        //总收益
+        uint256 totalIncome = 0;
+        for(uint i = 0 ; i < length ; i++){
+            //获取每票奖励
+            uint256 reTicket = bscValidatorSet.getReTicket(verificationNode[i]);
+            uint256 reward = uint256(voter[msg.sender][verificationNode[i]].votes).mul(reTicket).sub(voter[msg.sender][verificationNode[i]].debt);
+            totalIncome = totalIncome.add(reward);
+        }
+        return totalIncome;
+    }
+
 }
