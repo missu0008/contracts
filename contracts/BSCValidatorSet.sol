@@ -202,17 +202,18 @@ contract BSCValidatorSet is  System  {
       if (validator.jailed) {
         emit deprecatedDeposit(valAddr,value);
       } else {
-        //计算分红,截断的金额由出块节点享受
-        uint256 award = value.mul(uint256(validator.ratio)).div(100);
-        value = value.sub(award);
+        //如果有票数,计算分红,截断的金额由出块节点享受
+        if( validator.votes > 0){
+          uint256 award = value.mul(uint256(validator.ratio)).div(100);
+          value = value.sub(award);
+          //更新每票奖励
+          calculatePreTicket(validator,award);
+        }
         totalInComing = totalInComing.add(value);
         validator.incoming = validator.incoming.add(value);
         validator.totalInComing = validator.totalInComing.add(value);
-        //测试写死
         validator.totaltransactions += uint64(transactions);
         validator.blocks++;
-        //更新每票奖励
-        calculatePreTicket(validator,award);
         emit validatorDeposit(valAddr,value);
       }
     } else {
@@ -365,12 +366,14 @@ contract BSCValidatorSet is  System  {
     return consensusAddrs;
   }
 
-  function getValidatorsInfo()external view returns(Validator[] memory,Validator[] memory) {
+  function getValidatorsInfo()external view returns(Validator[] memory,Validator[] memory,Validator[] memory) {
     uint leng = currentValidatorSet.length;
     //验证人数量
     uint sfVaild = 0;
     //候选人数量
     uint candidateVaild  = 0;
+    //非候选人数量
+    uint nonCandidateVaild = 0;
     for(uint i = 0 ; i < leng ; i++ ){
       if(!currentValidatorSet[i].jailed){
         if(sfVaild < uint256(INITIAL_VALIDATOR)){
@@ -378,15 +381,19 @@ contract BSCValidatorSet is  System  {
         }else{
           candidateVaild++;
         }
+      }else{
+        nonCandidateVaild++;
       }
     }
 
     Validator[] memory sfValidator = new Validator[](sfVaild);
     Validator[] memory candidate = new Validator[](candidateVaild);
+    Validator[] memory nonCandidate = new Validator[](nonCandidateVaild);
     sfVaild = 0;
     candidateVaild = 0;
+    nonCandidateVaild = 0;
     for(uint i = 0 ; i < leng ; i++){
-       if(!currentValidatorSet[i].jailed){
+      if(!currentValidatorSet[i].jailed){
         if(sfVaild < uint256(INITIAL_VALIDATOR)){
           sfValidator[sfVaild] = currentValidatorSet[i];
           sfVaild++;
@@ -394,9 +401,12 @@ contract BSCValidatorSet is  System  {
           candidate[candidateVaild] = currentValidatorSet[i];
           candidateVaild++;
         }
+      }else{
+        nonCandidate[nonCandidateVaild] = currentValidatorSet[i];
+        nonCandidateVaild++;
       }
     }
-    return (sfValidator,candidate);
+    return (sfValidator,candidate,nonCandidate);
   }
 
   //新增get
