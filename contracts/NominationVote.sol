@@ -25,9 +25,12 @@ contract NominationVote is System , Owner {
 
     //仅做简单的备份
     struct Validator{
+        //出块地址
         address consensusAddress;
         // only in state
         bool jailed;
+        //提现地址
+        address feeAddress;
     }
     
     //投票信息表
@@ -95,6 +98,7 @@ contract NominationVote is System , Owner {
     function init() external onlyNotInit{
         Validator memory validator;
         validator.consensusAddress = GENESIS_NODE1;
+        validator.feeAddress = GENESIS_WITHDARW1;
         currentValidatorSet.push(validator);
 
         validator.consensusAddress = GENESIS_NODE2;
@@ -247,29 +251,38 @@ contract NominationVote is System , Owner {
     }
 
     //申请成为验证候选人
-    function validateCandidates(int8 ratio) external payable onlyInit{
+    function validateCandidates(int8 ratio ,address feeAddress) external payable onlyInit{
         require(msg.value >= TOKEN_CANDIDATE, "insuffibcient mortgage tokens");
         require(ratio >= 0 && ratio <= 100 ,"must be between 0-100");
+        require(feeAddress != address(0), "feeAddress: new owner is the zero address");
+        require( msg.sender != feeAddress,"can't use miner address" );
         //取消成为验证人期间禁止再次成为验证人
         require(userInfo[msg.sender].startTime == 0, "取消成为验证人有十五天的冻结期，请领取上次质押的代币再重新竞选" );
-        bscValidatorSet.updateCandidates(msg.sender,ratio);
+        bscValidatorSet.updateCandidates(msg.sender,ratio,feeAddress);
         userToken[msg.sender] = msg.value;
 
         //查看缓存，缓存有直接改变状态
         bool flag = true;
         uint i = 0;
         uint256 n = currentValidatorSet.length;
+        //缓存中有验证人，记录下标
+        uint index = 0;
         for(; i < n ; i++){
             if( currentValidatorSet[i].consensusAddress == msg.sender ){
                 currentValidatorSet[i].jailed = false;
                 flag = false;
-                break;
+                currentValidatorSet[i].feeAddress = feeAddress;
+                index = i;
+               // break;
             }
+            //feeAddress唯一，不得和其他矿工的feeAddress相同
+            require( !(currentValidatorSet[i].feeAddress == feeAddress && index != i),"feeAddress already exists" );
         }
         if(flag){
             Validator memory validator;
             validator.consensusAddress = msg.sender; 
             validator.jailed = false;
+            validator.feeAddress = feeAddress;
             currentValidatorSet.push(validator);
         }
 
@@ -284,7 +297,7 @@ contract NominationVote is System , Owner {
         uint i = 0;
         uint256 n = currentValidatorSet.length;
         for ( ; i < n ; i++){
-            if( currentValidatorSet[i].consensusAddress == msg.sender ){
+            if( currentValidatorSet[i].consensusAddress == msg.sender ||  currentValidatorSet[i].feeAddress == msg.sender){
                 flag = true;
                 currentValidatorSet[i].jailed = true;
                 break;
@@ -318,16 +331,25 @@ contract NominationVote is System , Owner {
         //累积的money
         uint256 amount;
 
-        //看其是否有出块奖励
-        amount = bscValidatorSet.getIncoming(msg.sender);
-        //领取收益的是验证人，优先拿取出块奖励
-        if(amount > 0){
-            bscValidatorSet.withdrawValidatorGst(msg.sender,amount);
-            if(amount >= awardGst){
-                bscValidatorSet.withdrawGst(msg.sender , awardGst );
-                //累计收益增加
-                userGst[msg.sender].totalAmount = userGst[msg.sender].totalAmount.add(awardGst);
-                return;
+        address validator;
+        bool status;
+        (validator,status) = getUserAddress(msg.sender);
+        if(status){
+            //看其是否有出块奖励
+            amount = bscValidatorSet.getIncoming(validator);
+            //领取收益的是验证人，优先拿取出块奖励
+            if(amount > 0){
+                //bscValidatorSet.withdrawValidatorGst(validator,amount);
+                //出块收益>=可领取的
+                if(amount >= awardGst){
+                    bscValidatorSet.withdrawValidatorGst(validator,awardGst);
+                    bscValidatorSet.withdrawGst(msg.sender , awardGst );
+                    //累计收益增加
+                    userGst[msg.sender].totalAmount = userGst[msg.sender].totalAmount.add(awardGst);
+                    return;
+                }else{
+                    bscValidatorSet.withdrawValidatorGst(validator,amount);
+                }
             }
         }
         //遍历验证人表
@@ -414,6 +436,17 @@ contract NominationVote is System , Owner {
         return voted;
     }
 
+    //判断当前用户类型（普通，feeaddress , 矿工),后面两者归为一类
+    function getUserAddress(address user) internal view returns(address,bool){
+        uint n = currentValidatorSet.length;
+        for (uint i = 0;i<n;i++) {
+            if(currentValidatorSet[i].consensusAddress == user || currentValidatorSet[i].feeAddress == user ){
+                return (currentValidatorSet[i].consensusAddress , true);
+            }
+        }
+        return(user , false);
+    }
+
     /****************************get function ****************************************/
     //获取该用户的总收益(出块奖励 + 投票收益)
     function getIncome(address user) public view returns(uint256){
@@ -427,7 +460,12 @@ contract NominationVote is System , Owner {
                 income = income.add(reward);
             }
         }
-        income = income.add(bscValidatorSet.getIncoming(user));
+        address validator;
+        bool status;
+        (validator,status) =  getUserAddress(user);
+        if(status){
+            income = income.add(bscValidatorSet.getIncoming(validator));
+        }
         return income;
     }
 

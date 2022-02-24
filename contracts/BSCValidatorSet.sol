@@ -29,6 +29,7 @@ contract BSCValidatorSet is  System  {
   mapping(address =>uint256) public currentValidatorSetMap;
 
   struct Validator{
+    //出块节点
     address consensusAddress;
     //是否是验证人（false表示为验证人或候选,true表示已取消成为验证人或候选）
     bool jailed;
@@ -46,6 +47,8 @@ contract BSCValidatorSet is  System  {
     uint64 totaltransactions;
     //打包的区块数
     uint blocks;
+    //操作人提现地址
+    address feeAddress;
   }
 
   //当前正在出块的验证人
@@ -72,6 +75,7 @@ contract BSCValidatorSet is  System  {
     validator.consensusAddress = GENESIS_NODE1;
     //创世节点默认分红10%
     validator.ratio = 10;
+    validator.feeAddress = GENESIS_WITHDARW1;
     currentValidatorSet.push(validator);
 
     validator.consensusAddress = GENESIS_NODE2;
@@ -112,7 +116,6 @@ contract BSCValidatorSet is  System  {
     uint256 index = currentValidatorSetMap[valAddr];
     require(index > 0,"verifier does not exist");
     Validator storage validator = currentValidatorSet[index-1];
-    require( !validator.jailed, "verifier does not exist");
     if(status){
       calculateVoteTicket(validator,ballot);
     }else{
@@ -122,7 +125,7 @@ contract BSCValidatorSet is  System  {
   }
 
   //更新验证人
-  function updateCandidates(address user ,int8 ratio)external onlyInit onlyNominationVoteContract{
+  function updateCandidates(address user ,int8 ratio,address feeAddress )external onlyInit onlyNominationVoteContract{
     //判断是否已是候选人
     uint n = currentValidatorSet.length;
     bool flag = true;
@@ -141,6 +144,7 @@ contract BSCValidatorSet is  System  {
       validator.consensusAddress = user;
       validator.jailed = false;
       //validator.status = true;
+      validator.feeAddress = feeAddress;
       validator.ratio = ratio;
       currentValidatorSet.push(validator);
       currentValidatorSetMap[user] = currentValidatorSet.length;
@@ -148,6 +152,7 @@ contract BSCValidatorSet is  System  {
       Validator storage validator = currentValidatorSet[index-1];
       validator.jailed = false;
       validator.ratio = ratio;
+      validator.feeAddress = feeAddress;
     }
   }
 
@@ -158,7 +163,7 @@ contract BSCValidatorSet is  System  {
     bool flag = false;
     uint i = 0;
     for ( ; i < n ; i++){
-        if( currentValidatorSet[i].consensusAddress == user && !currentValidatorSet[i].jailed){
+        if( (currentValidatorSet[i].consensusAddress == user || currentValidatorSet[i].feeAddress == user) && !currentValidatorSet[i].jailed){
             currentValidatorSet[i].jailed = true;
            // currentValidatorSet[i].status = false;
             flag = true;
