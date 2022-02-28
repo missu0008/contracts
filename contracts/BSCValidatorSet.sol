@@ -17,7 +17,7 @@ contract BSCValidatorSet is  System  {
 
   using RLPDecode for *;
 
-  uint256 public constant MAX_NUM_OF_VALIDATORS = 41;
+  uint256 public constant MAX_NUM_OF_VALIDATORS = 31;
 
   /*********************** state of the contract **************************/
   Validator[] public currentValidatorSet;
@@ -51,6 +51,19 @@ contract BSCValidatorSet is  System  {
     address feeAddress;
   }
 
+  //这个只记录验证人，不做排序，票数最小的直接替换
+  struct ValidatorNode{
+    //出块节点
+    address consensusAddress;
+    //票数
+    uint64 votes;
+    //当前下标是否已被使用
+    bool status;
+  }
+  ValidatorNode[MAX_NUM_OF_VALIDATORS] public currentValidatorSetNode;
+  //记录ValidatorNode下标
+  mapping(address =>uint256) public currentNode;
+
   //当前正在出块的验证人
   //mapping(address => uint256) produceValidatorMap;
   //初始化验证人的数量
@@ -72,31 +85,48 @@ contract BSCValidatorSet is  System  {
   /*********************** init **************************/
   function init() external onlyNotInit{
     Validator memory validator;
+    ValidatorNode memory validatorNode;
     validator.consensusAddress = GENESIS_NODE1;
     //创世节点默认分红10%
     validator.ratio = 10;
     validator.feeAddress = GENESIS_WITHDARW1;
+    validatorNode.consensusAddress = GENESIS_NODE1;
+    validatorNode.status = true;
     currentValidatorSet.push(validator);
+    currentValidatorSetNode[0] = validatorNode;
 
     validator.consensusAddress = GENESIS_NODE2;
     //创世节点默认分红10%
     validator.ratio = 10;
+    validatorNode.consensusAddress = GENESIS_NODE2;
+    validatorNode.status = true;
     currentValidatorSet.push(validator);
+    currentValidatorSetNode[1] = validatorNode;
 
     validator.consensusAddress = GENESIS_NODE3;
     //创世节点默认分红10%
     validator.ratio = 10;
+    validatorNode.consensusAddress = GENESIS_NODE3;
+    validatorNode.status = true;
     currentValidatorSet.push(validator);
+    currentValidatorSetNode[2] = validatorNode;
 
     validator.consensusAddress = GENESIS_NODE4;
     //创世节点默认分红10%
     validator.ratio = 10;
+    validatorNode.consensusAddress = GENESIS_NODE4;
+    validatorNode.status = true;
     currentValidatorSet.push(validator);
+    currentValidatorSetNode[3] = validatorNode;
 
     currentValidatorSetMap[GENESIS_NODE1] = 1;
     currentValidatorSetMap[GENESIS_NODE2] = 2;
     currentValidatorSetMap[GENESIS_NODE3] = 3;
     currentValidatorSetMap[GENESIS_NODE4] = 4;
+    currentNode[GENESIS_NODE1] = 1;
+    currentNode[GENESIS_NODE2] = 2;
+    currentNode[GENESIS_NODE3] = 3;
+    currentNode[GENESIS_NODE4] = 4;
     //初始化节点数量
     INITIAL_VALIDATOR = 4;
     nominationVote = NominationVote(NOMINATION_VOTE_ADDR);
@@ -121,21 +151,21 @@ contract BSCValidatorSet is  System  {
     }else{
       calculateUnVoteTicket(validator,ballot);
     }
-    checkRanking();
+    checkRanking(valAddr,status);
   }
 
   //更新验证人
   function updateCandidates(address user ,int8 ratio,address feeAddress )external onlyInit onlyNominationVoteContract{
     //判断是否已是候选人
-    uint n = currentValidatorSet.length;
-    bool flag = true;
-    for (uint i = 0 ; i<n ; i ++){
-        if( currentValidatorSet[i].consensusAddress == user && !currentValidatorSet[i].jailed ){
-            flag = false;
-            break;
-        }
-    }
-    require(flag, "already a candidate");
+    // uint n = currentValidatorSet.length;
+    // bool flag = true;
+    // for (uint i = 0 ; i<n ; i ++){
+    //     if( currentValidatorSet[i].consensusAddress == user && !currentValidatorSet[i].jailed ){
+    //         flag = false;
+    //         break;
+    //     }
+    // }
+    // require(flag, "already a candidate");
 
     //先看缓存表
     uint256 index = currentValidatorSetMap[user];
@@ -148,29 +178,92 @@ contract BSCValidatorSet is  System  {
       validator.ratio = ratio;
       currentValidatorSet.push(validator);
       currentValidatorSetMap[user] = currentValidatorSet.length;
+      //判断当前验证人是否还有多的位置
+      for(uint i = 0 ; i < uint256(INITIAL_VALIDATOR) ; i++){
+        if(!currentValidatorSetNode[i].status){
+          ValidatorNode memory validatorNode;
+          validatorNode.consensusAddress = user;
+          validatorNode.status = true;
+          currentValidatorSetNode[i] = validatorNode;
+          currentNode[user] = i + 1;
+          return;
+        }
+      }
     }else{
+      //判断是否已是候选人
       Validator storage validator = currentValidatorSet[index-1];
+      require(validator.jailed, "already a candidate");
       validator.jailed = false;
       validator.ratio = ratio;
       validator.feeAddress = feeAddress;
+
+      //判断当前验证人是否还有多的位置
+      for(uint i = 0 ; i < uint256(INITIAL_VALIDATOR) ; i++){
+        if(!currentValidatorSetNode[i].status){
+          ValidatorNode memory validatorNode;
+          validatorNode.consensusAddress = user;
+          validatorNode.status = true;
+          validatorNode.votes = validator.votes;
+          currentValidatorSetNode[i] = validatorNode;
+          currentNode[user] = i + 1;
+          return;
+        }
+      }
+
+      //遍历验证人，查找票数最小的下标
+      index = getMinVotes();
+      //更换位置
+      if(validator.votes > currentValidatorSetNode[index].votes){
+        //删除旧数据
+        delete(currentNode[currentValidatorSetNode[index].consensusAddress]);
+        //覆盖写入新的
+        ValidatorNode memory validatorNode;
+        validatorNode.consensusAddress = user;
+        validatorNode.status = true;
+        validatorNode.votes = validator.votes;
+        currentValidatorSetNode[index] = validatorNode;
+        currentNode[user] = index + 1;
+      }
     }
+
   }
 
   //取消成为验证人
   function cancleCandidates(address user)external onlyInit onlyNominationVoteContract{
-    uint256 n = currentValidatorSet.length;
-    //判断当前用户是否是验证人
-    bool flag = false;
-    uint i = 0;
-    for ( ; i < n ; i++){
-        if( (currentValidatorSet[i].consensusAddress == user || currentValidatorSet[i].feeAddress == user) && !currentValidatorSet[i].jailed){
-            currentValidatorSet[i].jailed = true;
-           // currentValidatorSet[i].status = false;
-            flag = true;
-            break;
-        }
+    // uint256 n = currentValidatorSet.length;
+    // //判断当前用户是否是验证人
+    // bool flag = false;
+    // uint i = 0;
+    // for ( ; i < n ; i++){
+    //     if( (currentValidatorSet[i].consensusAddress == user || currentValidatorSet[i].feeAddress == user) && !currentValidatorSet[i].jailed){
+    //         currentValidatorSet[i].jailed = true;
+    //        // currentValidatorSet[i].status = false;
+    //         flag = true;
+    //         break;
+    //     }
+    // }
+    // require(flag, "not a candidate"); 
+    uint256 index = currentValidatorSetMap[user];
+    require(index > 0 , "not a candidate");
+    Validator storage validator = currentValidatorSet[index-1];
+    validator.jailed = true;
+    //判断当前候选人是否是出块节点
+    index = currentNode[user];
+    if(index > 0){
+      uint maxindex;
+      bool flag;
+      (maxindex,flag) = getMaxVotes();
+      require(flag, "validators cannot cancel without candidates");
+      //删除旧数据
+      delete(currentNode[user]);
+      //覆盖写入新的
+      ValidatorNode memory validatorNode;
+      validatorNode.consensusAddress = currentValidatorSet[maxindex].consensusAddress;
+      validatorNode.status = true;
+      validatorNode.votes = currentValidatorSet[maxindex].votes;
+      currentValidatorSetNode[index-1] = validatorNode;
+      currentNode[currentValidatorSet[maxindex].consensusAddress] = index;
     }
-    require(flag, "not a candidate"); 
   }
 
   //收益提现
@@ -196,6 +289,66 @@ contract BSCValidatorSet is  System  {
     }
   }
 
+    //检查排名变化函数
+  function checkRanking(address valAddr , bool status) internal{
+
+    uint256 index = currentValidatorSetMap[valAddr];
+    require(index > 0,"verifier does not exist");
+    Validator storage validator = currentValidatorSet[index-1];
+    if(status){
+      //投票，投的人是验证人，排序不更新，直接退出
+      if( currentNode[valAddr] > 0){
+        return;
+      }
+       //判断当前验证人是否还有多的位置
+      for(uint i = 0 ; i < uint256(INITIAL_VALIDATOR) ; i++){
+        if(!currentValidatorSetNode[i].status){
+          ValidatorNode memory validatorNode;
+          validatorNode.consensusAddress = valAddr;
+          validatorNode.status = true;
+          validatorNode.votes = validator.votes;
+          currentValidatorSetNode[i] = validatorNode;
+          currentNode[valAddr] = i + 1;
+          return;
+        }
+      }
+      index = getMinVotes();
+      //票数大于验证人最小的票数，排行榜有更新
+      if(validator.votes > currentValidatorSetNode[index].votes ){
+        //删除旧数据
+        delete(currentNode[currentValidatorSetNode[index].consensusAddress]);
+        //覆盖写入新的
+        ValidatorNode memory validatorNode;
+        validatorNode.consensusAddress = valAddr;
+        validatorNode.status = true;
+        validatorNode.votes = validator.votes;
+        currentValidatorSetNode[index] = validatorNode;
+        currentNode[valAddr] = index + 1;
+      }
+    }else{
+      //如果取消投票取消的不是验证人，排名也不更新
+      if( currentNode[valAddr] == 0){
+        return;
+      }
+      index = currentNode[valAddr];
+      uint maxindex;
+      (maxindex,status) = getMaxVotes();
+      //验证人取消投票后比候选人最大票数小，更新
+      if(validator.votes < currentValidatorSet[maxindex].votes){
+        //删除旧数据
+        delete(currentNode[valAddr]);
+         //覆盖写入新的
+        ValidatorNode memory validatorNode;
+        validatorNode.consensusAddress = currentValidatorSet[maxindex].consensusAddress;
+        validatorNode.status = true;
+        validatorNode.votes = currentValidatorSet[maxindex].votes;
+        currentValidatorSetNode[index-1] = validatorNode;
+        currentNode[currentValidatorSet[maxindex].consensusAddress] = index;
+      }
+    }
+
+    
+  }
 
   /*********************** 底层出块调用此接口 **************************/
   function deposit(address valAddr,int transactions) external payable onlyCoinbase onlyInit noEmptyDeposit{
@@ -245,8 +398,8 @@ contract BSCValidatorSet is  System  {
     }
     //获取正在出块的验证人数量
     rest = 0;
-    for(uint i = 0 ; i < currentValidatorSet.length ; i++){
-      if( !currentValidatorSet[i].jailed ){
+    for(uint i = 0 ; i < currentValidatorSetNode.length ; i++){
+      if( currentValidatorSetNode[i].status ){
         rest++;
       }
     }
@@ -297,8 +450,8 @@ contract BSCValidatorSet is  System  {
     }
     //获取正在出块的验证人数量
     rest = 0;
-    for(uint i = 0 ; i < currentValidatorSet.length ; i++){
-      if( !currentValidatorSet[i].jailed ){
+    for(uint i = 0 ; i < currentValidatorSetNode.length ; i++){
+      if( currentValidatorSetNode[i].status ){
         rest++;
       }
     }
@@ -318,6 +471,25 @@ contract BSCValidatorSet is  System  {
     //收入清0
     currentValidatorSet[index].incoming = 0;
     currentValidatorSet[index].jailed = true;
+    index = currentNode[validator];
+    //如果验证人取消了竞选，无需再删
+    if(index > 0){
+      bool flag;
+      uint maxindex;
+      (maxindex,flag) = getMaxVotes();
+      if(!flag){
+        currentValidatorSetNode[index-1].status = false;
+      }else{
+        //覆盖写入新的
+        ValidatorNode memory validatorNode;
+        validatorNode.consensusAddress = currentValidatorSet[maxindex].consensusAddress;
+        validatorNode.status = true;
+        validatorNode.votes = currentValidatorSet[maxindex].votes;
+        currentValidatorSetNode[index-1] = validatorNode;
+        currentNode[currentValidatorSet[maxindex].consensusAddress] = index;
+      }
+      delete(currentNode[validator]);
+    }
     //投票合约把当前验证人修改
     nominationVote.felonyValidator(validator);
 
@@ -344,10 +516,10 @@ contract BSCValidatorSet is  System  {
   }
 
   function getValidators()external view returns(address[] memory) {
-    uint n = currentValidatorSet.length;
+    uint n = currentValidatorSetNode.length;
     uint valid = 0;
     for (uint i = 0;i<n;i++) {
-      if (!currentValidatorSet[i].jailed) {
+      if (currentValidatorSetNode[i].status) {
         valid ++;
       }
     }
@@ -360,8 +532,8 @@ contract BSCValidatorSet is  System  {
     valid = 0;
     //uint n = currentValidatorSet.length;
     for (uint i = 0;i<n;i++) {
-      if (!currentValidatorSet[i].jailed) {
-        consensusAddrs[valid] = currentValidatorSet[i].consensusAddress;
+      if (currentValidatorSetNode[i].status) {
+        consensusAddrs[valid] = currentValidatorSetNode[i].consensusAddress;
         valid ++;
       }
       if( valid >= uint256(INITIAL_VALIDATOR)){
@@ -379,16 +551,16 @@ contract BSCValidatorSet is  System  {
     uint candidateVaild  = 0;
     //非候选人数量
     uint nonCandidateVaild = 0;
+
+
     for(uint i = 0 ; i < leng ; i++ ){
-      if(!currentValidatorSet[i].jailed){
-        if(sfVaild < uint256(INITIAL_VALIDATOR)){
-          sfVaild++;
-        }else{
-          candidateVaild++;
-        }
-      }else{
-        nonCandidateVaild++;
-      }
+     if(currentNode[currentValidatorSet[i].consensusAddress] > 0 && sfVaild < uint256(INITIAL_VALIDATOR)){
+       sfVaild++;
+     }else if(!currentValidatorSet[i].jailed){
+       candidateVaild++;
+     }else{
+       nonCandidateVaild++;
+     }
     }
 
     Validator[] memory sfValidator = new Validator[](sfVaild);
@@ -397,20 +569,35 @@ contract BSCValidatorSet is  System  {
     sfVaild = 0;
     candidateVaild = 0;
     nonCandidateVaild = 0;
-    for(uint i = 0 ; i < leng ; i++){
-      if(!currentValidatorSet[i].jailed){
-        if(sfVaild < uint256(INITIAL_VALIDATOR)){
-          sfValidator[sfVaild] = currentValidatorSet[i];
-          sfVaild++;
-        }else{
-          candidate[candidateVaild] = currentValidatorSet[i];
-          candidateVaild++;
-        }
+    for(uint i = 0 ; i < currentValidatorSet.length ; i++){
+      if( currentNode[currentValidatorSet[i].consensusAddress] > 0 && sfVaild < uint256(INITIAL_VALIDATOR)){
+        sfValidator[sfVaild] = currentValidatorSet[i];
+        sfVaild++;
+      }else if(!currentValidatorSet[i].jailed){
+       candidate[candidateVaild] = currentValidatorSet[i];
+       candidateVaild++;
       }else{
         nonCandidate[nonCandidateVaild] = currentValidatorSet[i];
         nonCandidateVaild++;
       }
     }
+    // sfVaild = 0;
+    // candidateVaild = 0;
+    // nonCandidateVaild = 0;
+    // for(uint i = 0 ; i < leng ; i++){
+    //   if(!currentValidatorSet[i].jailed){
+    //     if(sfVaild < uint256(INITIAL_VALIDATOR)){
+    //       sfValidator[sfVaild] = currentValidatorSet[i];
+    //       sfVaild++;
+    //     }else{
+    //       candidate[candidateVaild] = currentValidatorSet[i];
+    //       candidateVaild++;
+    //     }
+    //   }else{
+    //     nonCandidate[nonCandidateVaild] = currentValidatorSet[i];
+    //     nonCandidateVaild++;
+    //   }
+    // }
     return (sfValidator,candidate,nonCandidate);
   }
 
@@ -445,25 +632,6 @@ contract BSCValidatorSet is  System  {
     return (true,"");
   }
 
-  //检查排名变化函数
-  function checkRanking() internal returns(bool){
-    //通过票数排序验证人,冒泡排序
-    for(uint j = 0 ; j < currentValidatorSet.length - 1 ; j++){
-        for(uint i = 0 ; i < currentValidatorSet.length - j - 1 ; i++ ){
-            if( currentValidatorSet[i].votes < currentValidatorSet[i + 1].votes){
-                Validator memory tmp = currentValidatorSet[i];
-                currentValidatorSet[i] = currentValidatorSet[i + 1];
-                currentValidatorSet[i + 1] = tmp;
-                //替换currentValidatorSetMap中的位置
-                uint256 index;
-                index = currentValidatorSetMap[currentValidatorSet[i].consensusAddress];
-                currentValidatorSetMap[currentValidatorSet[i].consensusAddress] = currentValidatorSetMap[currentValidatorSet[i+1].consensusAddress];
-                currentValidatorSetMap[currentValidatorSet[i+1].consensusAddress] = index;
-            }
-        }
-    }
-  }
-
    //出块奖励计算每票奖励
   function calculatePreTicket(Validator storage validator , uint256 amount) internal{
     //票数为0后，每票奖励重置
@@ -479,6 +647,10 @@ contract BSCValidatorSet is  System  {
     validator.votes += ballot;
     //validator.reTicket += amount.div(validator.votes);
    // validator.lastRewardBlock = block.number;
+    uint256 index = currentNode[validator.consensusAddress];
+    if( index > 0){
+      currentValidatorSetNode[index-1].votes += ballot;
+    }
   }
 
   //取消投票更新每票奖励
@@ -493,5 +665,37 @@ contract BSCValidatorSet is  System  {
     // }else{
     //   validator.reTicket = validator.reTicket.add(amount.div(uint256(validator.votes)));
     // }
+    uint256 index = currentNode[validator.consensusAddress];
+    if( index > 0){
+      currentValidatorSetNode[index-1].votes -= ballot;
+    }
+  }
+
+  //获取验证人票数最小的下标
+  function getMinVotes() internal view returns(uint){
+    uint index = 0;
+    uint minvotes = currentValidatorSetNode[0].votes;
+    for(uint i = 1 ; i < currentValidatorSetNode.length ; i++){
+      if(minvotes > currentValidatorSetNode[i].votes && currentValidatorSetNode[i].status){
+        minvotes = currentValidatorSetNode[i].votes;
+        index = i;
+      }
+    }
+    return index;
+  }
+
+  //获取候选人票数最大的下标
+  function getMaxVotes() internal view returns(uint,bool){
+    uint index = 0;
+    uint maxvotes = 0;
+    bool flag = false;
+    for(uint i = 0 ; i < currentValidatorSet.length ; i++){
+      if(maxvotes <= currentValidatorSet[i].votes && currentNode[currentValidatorSet[i].consensusAddress] == 0){
+        maxvotes = currentValidatorSet[i].votes;
+        index = i;
+        flag = true;
+      }
+    }
+    return (index,flag);
   }
 }

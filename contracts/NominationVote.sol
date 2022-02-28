@@ -145,7 +145,7 @@ contract NominationVote is System , Owner {
         require(total_gst.sub(userGst[msg.sender].usedLockAmount) >= amount ,"some GST have been voted" );
         require(address(this).balance >= amount,"insufficient contract balance");
         userGst[msg.sender].lockAmount = userGst[msg.sender].lockAmount.sub(amount);
-
+        require(userGst[msg.sender].thawInfo.length <= 10 ,"最大解冻次数不得超过10");
         //待返回的钱进入解冻周期
         ThawInfo memory thawinfo;
         thawinfo.amount = amount;
@@ -214,6 +214,7 @@ contract NominationVote is System , Owner {
 
             bscValidatorSet.updateVoter(ballot[i], verificationNode[i], true);
         }
+       // bscValidatorSet.checkRanking();
     }
 
     //取消对验证节点投票的票数
@@ -248,6 +249,7 @@ contract NominationVote is System , Owner {
             //更新验证人合约总票数
             bscValidatorSet.updateVoter(ballot[i], verificationNode[i], false);
         }
+     //   bscValidatorSet.checkRanking();
     }
 
     //申请成为验证候选人
@@ -305,7 +307,7 @@ contract NominationVote is System , Owner {
         }
         require(flag, "not a candidate");
         //require(userToken[msg.sender] > 0 , "the initial validator cannot be cancelled");
-        bscValidatorSet.cancleCandidates(msg.sender);
+        bscValidatorSet.cancleCandidates(currentValidatorSet[i].consensusAddress);
         //初始验证人是没有质押的
         if( userToken[msg.sender] > 0){
             userInfo[msg.sender].amount = userToken[msg.sender];
