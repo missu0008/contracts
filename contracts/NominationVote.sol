@@ -102,12 +102,15 @@ contract NominationVote is System , Owner {
         currentValidatorSet.push(validator);
 
         validator.consensusAddress = GENESIS_NODE2;
+        validator.feeAddress = GENESIS_WITHDARW2;
         currentValidatorSet.push(validator);
 
         validator.consensusAddress = GENESIS_NODE3;
+        validator.feeAddress = GENESIS_WITHDARW3;
         currentValidatorSet.push(validator);
 
         validator.consensusAddress = GENESIS_NODE4;
+        validator.feeAddress = GENESIS_WITHDARW4;
         currentValidatorSet.push(validator);
 
         currentValidatorSetMap[GENESIS_NODE1] = 1;

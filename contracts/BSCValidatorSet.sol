@@ -98,6 +98,7 @@ contract BSCValidatorSet is  System  {
     validator.consensusAddress = GENESIS_NODE2;
     //创世节点默认分红10%
     validator.ratio = 10;
+    validator.feeAddress = GENESIS_WITHDARW2;
     validatorNode.consensusAddress = GENESIS_NODE2;
     validatorNode.status = true;
     currentValidatorSet.push(validator);
@@ -106,6 +107,7 @@ contract BSCValidatorSet is  System  {
     validator.consensusAddress = GENESIS_NODE3;
     //创世节点默认分红10%
     validator.ratio = 10;
+    validator.feeAddress = GENESIS_WITHDARW3;
     validatorNode.consensusAddress = GENESIS_NODE3;
     validatorNode.status = true;
     currentValidatorSet.push(validator);
@@ -114,6 +116,7 @@ contract BSCValidatorSet is  System  {
     validator.consensusAddress = GENESIS_NODE4;
     //创世节点默认分红10%
     validator.ratio = 10;
+    validator.feeAddress = GENESIS_WITHDARW4;
     validatorNode.consensusAddress = GENESIS_NODE4;
     validatorNode.status = true;
     currentValidatorSet.push(validator);
