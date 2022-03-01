@@ -20,8 +20,14 @@ contract System {
   address public constant GENESIS_NODE2 = 0x969fb73d144672a22680A844854dF0e1999eA573;
   address public constant GENESIS_NODE3 = 0x9fF4E2D26b4675d91e07BfB04E16DB35a4337b4e;
   address public constant GENESIS_NODE4 = 0xc65380E428F994f436A8838C6aF06Fd2ba01E2a4;
+  
+  address public constant GENESIS_ADMIN = 0x48BF584350605970000AA9ab1eff4F4721aD040f;
+  //创世节点初始化收益地址
+  address public constant GENESIS_WITHDARW1 = 0x031f03825b9Cf774B6535538b9fB6443d3BB1eBe;
+  address public constant GENESIS_WITHDARW2 = 0x8260eaD62d6e6f0d03c6DDc3a800383c8dfA2923;
+  address public constant GENESIS_WITHDARW3 = 0xBe419bDf2CeE79FcadB3126683D1bAa325732b11;
+  address public constant GENESIS_WITHDARW4 = 0x37d186ff194F7B9dfb1d7250322d8607a581E0DD;
 
-  address public constant GENESIS_ADMIN = 0x735989886643ec18c215008516C709Ee2606e225;
 
   modifier onlyCoinbase() {
     require(msg.sender == block.coinbase, "the message sender must be the block producer");
