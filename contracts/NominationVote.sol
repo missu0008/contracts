@@ -113,10 +113,20 @@ contract NominationVote is System , Owner {
         validator.feeAddress = GENESIS_WITHDARW4;
         currentValidatorSet.push(validator);
 
+        validator.consensusAddress = GENESIS_NODE5;
+        validator.feeAddress = GENESIS_WITHDARW5;
+        currentValidatorSet.push(validator);
+
+        validator.consensusAddress = GENESIS_NODE6;
+        validator.feeAddress = GENESIS_WITHDARW6;
+        currentValidatorSet.push(validator);
+
         currentValidatorSetMap[GENESIS_NODE1] = 1;
         currentValidatorSetMap[GENESIS_NODE2] = 2;
         currentValidatorSetMap[GENESIS_NODE3] = 3;
         currentValidatorSetMap[GENESIS_NODE4] = 4;
+        currentValidatorSetMap[GENESIS_NODE5] = 5;
+        currentValidatorSetMap[GENESIS_NODE6] = 6;
         bscValidatorSet = BSCValidatorSet(VALIDATOR_CONTRACT_ADDR);
         //admin[GENESIS_ADMIN] = true;
         //转换权限
@@ -270,8 +280,8 @@ contract NominationVote is System , Owner {
         bool flag = true;
         uint i = 0;
         uint256 n = currentValidatorSet.length;
-        //缓存中有验证人，记录下标
-        uint index = 0;
+        //缓存中有验证人，记录下标(避免第一个为0时重复)
+        uint256 index = n + 1;
         for(; i < n ; i++){
             if( currentValidatorSet[i].consensusAddress == msg.sender ){
                 currentValidatorSet[i].jailed = false;
@@ -282,6 +292,10 @@ contract NominationVote is System , Owner {
             }
             //feeAddress唯一，不得和其他矿工的feeAddress相同
             require( !(currentValidatorSet[i].feeAddress == feeAddress && index != i),"feeAddress already exists" );
+            //feeAddress唯一，不得和其他矿工相同
+            require( !(currentValidatorSet[i].consensusAddress == feeAddress && index != i),"feeAddress is unique and must not be the same as other miners");
+            //候选人唯一,不得和feeAddress相同
+            require( !(currentValidatorSet[i].feeAddress == msg.sender && index != i),"the candidate is unique and cannot be the same as feeAddress");
         }
         if(flag){
             Validator memory validator;
@@ -304,6 +318,7 @@ contract NominationVote is System , Owner {
         for ( ; i < n ; i++){
             if( currentValidatorSet[i].consensusAddress == msg.sender ||  currentValidatorSet[i].feeAddress == msg.sender){
                 flag = true;
+                require( !currentValidatorSet[i].jailed, "not a candidate validator" );
                 currentValidatorSet[i].jailed = true;
                 break;
             }
