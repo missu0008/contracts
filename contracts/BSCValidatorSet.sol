@@ -359,7 +359,8 @@ contract BSCValidatorSet is  System  {
       uint maxindex;
       (maxindex,status) = getMaxVotes();
       //验证人取消投票后比候选人最大票数小，更新
-      if(validator.votes < currentValidatorSet[maxindex].votes){
+      //status必须为true，否则没有候选人验证人会下去
+      if( status && validator.votes < currentValidatorSet[maxindex].votes){
         //删除旧数据
         delete(currentNode[valAddr]);
          //覆盖写入新的
@@ -715,7 +716,7 @@ contract BSCValidatorSet is  System  {
     uint maxvotes = 0;
     bool flag = false;
     for(uint i = 0 ; i < currentValidatorSet.length ; i++){
-      if(maxvotes <= currentValidatorSet[i].votes && currentNode[currentValidatorSet[i].consensusAddress] == 0){
+      if(maxvotes <= currentValidatorSet[i].votes && currentNode[currentValidatorSet[i].consensusAddress] == 0 && !currentValidatorSet[i].jailed){
         maxvotes = currentValidatorSet[i].votes;
         index = i;
         flag = true;
