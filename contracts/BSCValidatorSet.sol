@@ -122,38 +122,16 @@ contract BSCValidatorSet is  System  {
     currentValidatorSet.push(validator);
     currentValidatorSetNode[3] = validatorNode;
 
-    validator.consensusAddress = GENESIS_NODE5;
-    //创世节点默认分红10%
-    validator.ratio = 10;
-    validator.feeAddress = GENESIS_WITHDARW5;
-    validatorNode.consensusAddress = GENESIS_NODE5;
-    validatorNode.status = true;
-    currentValidatorSet.push(validator);
-    currentValidatorSetNode[4] = validatorNode;
-
-    validator.consensusAddress = GENESIS_NODE6;
-    //创世节点默认分红10%
-    validator.ratio = 10;
-    validator.feeAddress = GENESIS_WITHDARW6;
-    validatorNode.consensusAddress = GENESIS_NODE6;
-    validatorNode.status = true;
-    currentValidatorSet.push(validator);
-    currentValidatorSetNode[5] = validatorNode;
-
     currentValidatorSetMap[GENESIS_NODE1] = 1;
     currentValidatorSetMap[GENESIS_NODE2] = 2;
     currentValidatorSetMap[GENESIS_NODE3] = 3;
     currentValidatorSetMap[GENESIS_NODE4] = 4;
-    currentValidatorSetMap[GENESIS_NODE5] = 5;
-    currentValidatorSetMap[GENESIS_NODE6] = 6;
     currentNode[GENESIS_NODE1] = 1;
     currentNode[GENESIS_NODE2] = 2;
     currentNode[GENESIS_NODE3] = 3;
     currentNode[GENESIS_NODE4] = 4;
-    currentNode[GENESIS_NODE5] = 5;
-    currentNode[GENESIS_NODE6] = 6;
     //初始化节点数量
-    INITIAL_VALIDATOR = 6;
+    INITIAL_VALIDATOR = 4;
     nominationVote = NominationVote(NOMINATION_VOTE_ADDR);
     slashIndicator = SlashIndicator(SLASH_CONTRACT_ADDR);
     alreadyInit = true;

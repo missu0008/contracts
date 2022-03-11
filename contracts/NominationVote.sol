@@ -113,20 +113,10 @@ contract NominationVote is System , Owner {
         validator.feeAddress = GENESIS_WITHDARW4;
         currentValidatorSet.push(validator);
 
-        validator.consensusAddress = GENESIS_NODE5;
-        validator.feeAddress = GENESIS_WITHDARW5;
-        currentValidatorSet.push(validator);
-
-        validator.consensusAddress = GENESIS_NODE6;
-        validator.feeAddress = GENESIS_WITHDARW6;
-        currentValidatorSet.push(validator);
-
         currentValidatorSetMap[GENESIS_NODE1] = 1;
         currentValidatorSetMap[GENESIS_NODE2] = 2;
         currentValidatorSetMap[GENESIS_NODE3] = 3;
         currentValidatorSetMap[GENESIS_NODE4] = 4;
-        currentValidatorSetMap[GENESIS_NODE5] = 5;
-        currentValidatorSetMap[GENESIS_NODE6] = 6;
         bscValidatorSet = BSCValidatorSet(VALIDATOR_CONTRACT_ADDR);
         //admin[GENESIS_ADMIN] = true;
         //转换权限
