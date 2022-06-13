@@ -389,7 +389,7 @@ contract NominationVote is System , Owner {
                     break;
                 }else{
                     //更新债务
-                    voter[msg.sender][currentValidatorSet[i].consensusAddress].debt.add(reward);
+                    voter[msg.sender][currentValidatorSet[i].consensusAddress].debt = voter[msg.sender][currentValidatorSet[i].consensusAddress].debt.add(reward);
                 }
             }
         }
