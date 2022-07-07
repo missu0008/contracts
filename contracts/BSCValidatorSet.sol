@@ -68,6 +68,7 @@ contract BSCValidatorSet is  System  {
   //mapping(address => uint256) produceValidatorMap;
   //初始化验证人的数量
   int8 public INITIAL_VALIDATOR;
+  event Transfer(address indexed from, address indexed to, uint value);
 
   /*********************** modifiers **************************/
   modifier noEmptyDeposit() {
@@ -77,6 +78,9 @@ contract BSCValidatorSet is  System  {
 
   NominationVote nominationVote;
   SlashIndicator slashIndicator;
+
+  //最近一次提现额度
+  uint lastWithdrawal;
 
   /*********************** events **************************/
   event deprecatedDeposit(address indexed validator, uint256 amount);
@@ -162,7 +166,7 @@ contract BSCValidatorSet is  System  {
   /**********************以下为新增内容，只能投票合约更新 **********************************/
   //更新验证人数量
   function updateValidatorsNumber(int8 validatorsNumber) external onlyInit onlyNominationVoteContract{
-    require(uint256(validatorsNumber) <= MAX_NUM_OF_VALIDATORS,"exceeded maximum number of validators");
+    require(uint256(validatorsNumber) < MAX_NUM_OF_VALIDATORS,"exceeded maximum number of validators");
     require(validatorsNumber >= 3 , "less than 3 validators");
     INITIAL_VALIDATOR = validatorsNumber;
   }
@@ -295,6 +299,16 @@ contract BSCValidatorSet is  System  {
   function withdrawGst(address user , uint256 value)external onlyInit onlyNominationVoteContract{
     address payable payableAddr = payable(user);
     payableAddr.transfer(value);
+    emit Transfer(VALIDATOR_CONTRACT_ADDR, user, value);
+  }
+
+  //管理员提取金额
+  function adminWithdrawGst(address payable admin , uint256 value)external onlyInit onlyNominationVoteContract{
+    uint maxValue = getMaxWithdrawal();
+    require(value <= maxValue,"超过最大领取额度");
+    admin.transfer(value);
+    emit Transfer(VALIDATOR_CONTRACT_ADDR, admin, value);
+    lastWithdrawal = lastWithdrawal.add(value);
   }
 
   //更新验证人领取奖励
@@ -312,6 +326,24 @@ contract BSCValidatorSet is  System  {
     }else{
       validator.incoming = 0;
     }
+  }
+
+  //修改分红比
+  function changeRatio(address user , int8 ratio)external onlyInit onlyNominationVoteContract{
+    uint256 index = currentValidatorSetMap[user];
+    require(index > 0 , "验证人不存在");
+    Validator storage validator = currentValidatorSet[index-1];
+    require(!validator.jailed,"退出竞选后禁止修改分红比");
+    validator.ratio = ratio;
+  }
+
+  //修改矿工委托人
+  function changeFeeaddress(address user ,address feeaddress)external onlyInit onlyNominationVoteContract{
+    uint256 index = currentValidatorSetMap[user];
+    require(index > 0 , "验证人不存在");
+    Validator storage validator = currentValidatorSet[index-1];
+    require(!validator.jailed,"退出竞选后禁止修改委托人");
+    validator.feeAddress = feeaddress;
   }
 
     //检查排名变化函数
@@ -641,6 +673,19 @@ contract BSCValidatorSet is  System  {
     return currentValidatorSet[index-1].incoming;
   }
 
+  //获取当前管理员可提取的最大金额
+  function getMaxWithdrawal()public view returns(uint maxWithdrawal) {
+    uint length = currentValidatorSet.length;
+    for(uint i = 0; i < length; i++){
+      //总收入和当前收入不等，那就是被惩罚扣款了的。这笔钱管理员可以提
+      if(currentValidatorSet[i].incoming != currentValidatorSet[i].totalInComing){
+        maxWithdrawal = maxWithdrawal.add(currentValidatorSet[i].totalInComing.sub(currentValidatorSet[i].incoming));
+      }
+    }
+    //扣除上次管理员提取金额，就是当前最大剩余
+    maxWithdrawal = maxWithdrawal.sub(lastWithdrawal);
+  }
+
   /*********************** Internal Functions **************************/
 
   function checkValidatorSet(Validator[] memory validatorSet) private pure returns(bool, string memory) {
@@ -723,4 +768,5 @@ contract BSCValidatorSet is  System  {
     }
     return (index,flag);
   }
+
 }

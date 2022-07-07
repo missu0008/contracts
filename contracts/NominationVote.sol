@@ -94,6 +94,18 @@ contract NominationVote is System , Owner {
     //测试
     address public constant TEST = 0xd9145CCE52D386f254917e481eB44e9943F39138;
 
+    //事件
+    event Transfer(address indexed from, address indexed to, uint value);
+    event PledgeGst(address indexed owner, uint value);
+    event UnpledgeGst(address indexed owner, uint value);
+    event VoteVerifier(address indexed owner,uint64[] ballot , address[] verificationNode);
+    event UnvoterVerifier(address indexed owner,uint64[] ballot , address[] verificationNode);
+    event ValidateCandidates(address indexed owner,int8 ratio ,address feeAddress);
+    event UnvalidateCandidates(address indexed owner);
+    event ReceiveAward(address indexed owner,uint value);
+    event FelonyValidator(address indexed user);
+    
+
     /*********************** init 初始化函数主要是获取验证人集合，和BSCValidatorSet中保持一致**************************/
     function init() external onlyNotInit{
         Validator memory validator;
@@ -142,6 +154,7 @@ contract NominationVote is System , Owner {
         checkAmount(tokenamount);
         userGst[user].lockAmount = userGst[user].lockAmount.add(tokenamount);
         TOTAL_PLEDGE = TOTAL_PLEDGE.add(tokenamount);
+        emit PledgeGst(user , tokenamount);
         return tokenamount;
     }
 
@@ -164,8 +177,8 @@ contract NominationVote is System , Owner {
         thawinfo.amount = amount;
         thawinfo.startTime = block.timestamp;
         userGst[msg.sender].thawInfo.push(thawinfo);
-         TOTAL_PLEDGE = TOTAL_PLEDGE.sub(amount);
-        //msg.sender.transfer(amount);
+        TOTAL_PLEDGE = TOTAL_PLEDGE.sub(amount);
+        emit UnpledgeGst(msg.sender , amount);
     }
 
     //领取取消质押的代币
@@ -196,6 +209,7 @@ contract NominationVote is System , Owner {
             userGst[msg.sender].thawInfo.pop();
         }
         msg.sender.transfer(amount);
+        emit Transfer(NOMINATION_VOTE_ADDR, msg.sender, amount);
     }
 
 
@@ -227,7 +241,7 @@ contract NominationVote is System , Owner {
 
             bscValidatorSet.updateVoter(ballot[i], verificationNode[i], true);
         }
-       // bscValidatorSet.checkRanking();
+        emit VoteVerifier(msg.sender, ballot, verificationNode);
     }
 
     //取消对验证节点投票的票数
@@ -262,7 +276,7 @@ contract NominationVote is System , Owner {
             //更新验证人合约总票数
             bscValidatorSet.updateVoter(ballot[i], verificationNode[i], false);
         }
-     //   bscValidatorSet.checkRanking();
+        emit UnvoterVerifier(msg.sender, ballot, verificationNode);
     }
 
     //申请成为验证候选人
@@ -306,7 +320,7 @@ contract NominationVote is System , Owner {
         }
 
         TOTAL_PLEDGE = TOTAL_PLEDGE.add(msg.value);
-
+        emit ValidateCandidates(msg.sender, ratio, feeAddress);
     }
 
     //取消成为验证候选人
@@ -331,6 +345,7 @@ contract NominationVote is System , Owner {
             userInfo[msg.sender].amount = userToken[msg.sender];
             userInfo[msg.sender].startTime = block.timestamp;
         }
+        emit UnvalidateCandidates(msg.sender);
     }
 
     function receiveValidateGST()external onlyInit{
@@ -342,6 +357,7 @@ contract NominationVote is System , Owner {
         //总质押量减少
         TOTAL_PLEDGE = TOTAL_PLEDGE.sub(userInfo[msg.sender].amount);
         delete userInfo[msg.sender];
+        emit Transfer(NOMINATION_VOTE_ADDR, msg.sender, userInfo[msg.sender].amount);
     }
 
     //投票人领取分红奖励
@@ -397,7 +413,7 @@ contract NominationVote is System , Owner {
         userGst[msg.sender].totalAmount = userGst[msg.sender].totalAmount.add(awardGst);
         //打钱
         bscValidatorSet.withdrawGst(msg.sender , awardGst );
-
+        emit ReceiveAward(msg.sender , awardGst);
     }
 
     /*********************** For BSCValidatorSet **************************/
@@ -418,6 +434,42 @@ contract NominationVote is System , Owner {
                 break;
             }
         }
+        emit FelonyValidator(validator);
+    }
+
+    //修改当前验证人分红比
+    function changeRatio(int8 ratio)external onlyInit{
+        require(ratio >= 0 && ratio <= 100 ,"must be between 0-100");
+        address validator;
+        bool status;
+        (validator,status) = getUserAddress(msg.sender);
+        require(status , "操作人必须为矿工或矿工委托人");
+        bscValidatorSet.changeRatio(validator, ratio);
+    }
+
+    //修改矿工委托人地址
+    function changeFeeaddress(address feeaddress)external onlyInit{
+        address validator;
+        bool status;
+        (validator,status) = getUserAddress(msg.sender);
+        require(status , "操作人必须为矿工或矿工委托人");
+        uint i = 0;
+        uint n = currentValidatorSet.length;
+        uint index = n + 1;
+        for(; i < n ; i++){
+            if( currentValidatorSet[i].consensusAddress == validator ){
+                index = i;
+                require(feeaddress != currentValidatorSet[i].feeAddress, "委托人和修改前一样，禁止操作");
+               // break;
+            }
+             //feeAddress唯一，不得和其他矿工的feeAddress相同
+            require( !(currentValidatorSet[i].feeAddress == feeaddress && index != i),"feeAddress already exists" );
+            //feeAddress唯一，不得和其他矿工相同
+            require( !(currentValidatorSet[i].consensusAddress == feeaddress && index != i),"feeAddress is unique and must not be the same as other miners");
+            //矿工唯一,不得和feeAddress相同
+            require( !(currentValidatorSet[i].feeAddress == validator && index != i),"the candidate is unique and cannot be the same as feeAddress");
+        }
+        bscValidatorSet.changeFeeaddress(validator, feeaddress);
     }
 
     /*********************** For admin **************************/
@@ -426,6 +478,7 @@ contract NominationVote is System , Owner {
         slashValidator[validator] = slashValidator[validator].sub(amount);
         total_slash = total_slash.sub(amount);
         validator.transfer(amount);
+        emit Transfer(NOMINATION_VOTE_ADDR,validator , amount);
     }
 
     function updateValidatorsNumber(int8 validatorsNumber) external onlyInit onlyOwner {
@@ -437,7 +490,12 @@ contract NominationVote is System , Owner {
         bscValidatorSet.cleanValidator();
     }
 
+    //管理员提取额度
+    function adminWithdrawGst(uint value)external onlyInit onlyOwner {
+        bscValidatorSet.adminWithdrawGst(msg.sender,value);
+    }
 
+    /*********************** internal function **************************/
     //判断精度是否为18的整数
     function checkAmount(uint256 amount) internal pure{
         require(amount % TOKEN_PRECISION == 0 , "must be an integer");
