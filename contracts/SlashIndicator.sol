@@ -9,8 +9,8 @@ import "./BSCValidatorSet.sol";
 contract SlashIndicator is System{
   using RLPEncode for *;
 
-  uint256 public constant MISDEMEANOR_THRESHOLD = 50;
-  uint256 public constant FELONY_THRESHOLD = 300;
+  uint256 public constant MISDEMEANOR_THRESHOLD = 500; //漏块数每达500个，惩罚一次
+  uint256 public constant FELONY_THRESHOLD = 30000;  //漏块数达三万个，被踢出
   uint256 public constant BSC_RELAYER_REWARD = 1e16;
   uint256 public constant DECREASE_RATE = 4;
 
