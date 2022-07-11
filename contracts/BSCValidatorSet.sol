@@ -80,7 +80,7 @@ contract BSCValidatorSet is  System  {
   SlashIndicator slashIndicator;
 
   //最近一次提现额度
-  uint lastWithdrawal;
+  uint public lastWithdrawal;
 
   /*********************** events **************************/
   event deprecatedDeposit(address indexed validator, uint256 amount);
@@ -676,12 +676,17 @@ contract BSCValidatorSet is  System  {
   //获取当前管理员可提取的最大金额
   function getMaxWithdrawal()public view returns(uint maxWithdrawal) {
     uint length = currentValidatorSet.length;
+    uint total; //矿工累积的总收入
+    uint incoming; //矿工当前收入
     for(uint i = 0; i < length; i++){
       //总收入和当前收入不等，那就是被惩罚扣款了的。这笔钱管理员可以提
       if(currentValidatorSet[i].incoming != currentValidatorSet[i].totalInComing){
-        maxWithdrawal = maxWithdrawal.add(currentValidatorSet[i].totalInComing.sub(currentValidatorSet[i].incoming));
+        //分开累加计算防止算法溢出
+        total = total.add(currentValidatorSet[i].totalInComing);
+        incoming = incoming.add(currentValidatorSet[i].incoming);
       }
     }
+    maxWithdrawal = maxWithdrawal.add(total.sub(incoming));
     //扣除上次管理员提取金额，就是当前最大剩余
     maxWithdrawal = maxWithdrawal.sub(lastWithdrawal);
   }
